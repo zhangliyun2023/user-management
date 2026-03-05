@@ -1,3 +1,3 @@
-user-management/node_modules/
-user-management/.env
-user-management/uploads/
+node_modules/
+.env
+uploads/
