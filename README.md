@@ -1,12 +1,12 @@
 # User Management
 
-用户与管理员后端服务，提供软件端用户注册/登录、License Key 认证、Web 管理后台（管理员统计、用户管理、用量与配额、审计日志）。
+用户与管理员后端服务，为桌面软件提供用户注册/登录、License Key 认证、简历/录音/会话管理、AI 代理（对话、简历解析、JD 解析、语音转写等），以及 Web 管理后台（用户统计、配额与冻结、用量明细、审计日志）。
 
 ## 功能概览
 
 | 类型 | 功能 |
 |------|------|
-| **软件端** | 邮箱注册、邮箱登录、License Key 登录 |
+| **软件端** | 邮箱注册/登录、License Key 登录、修改密码、简历上传/解析、录音上传、面试会话、AI 对话/追问/简历/JD/转写/清洗 |
 | **管理后台** | 管理员注册/登录、用户统计、用户增删、配额与冻结、用量明细、操作审计日志 |
 
 ## 技术栈
@@ -15,6 +15,8 @@
 - **框架**: Express 5
 - **数据库**: PostgreSQL
 - **认证**: JWT + bcrypt
+- **文件上传**: multer
+- **简历解析**: mammoth（DOCX）、pdf-parse（PDF）
 
 ## 环境要求
 
@@ -68,10 +70,14 @@ npm run start
 | `DATABASE_URL` | 是 | PostgreSQL 连接串 |
 | `JWT_SECRET` | 是 | JWT 签名密钥 |
 | `ADMIN_EMAILS` | 管理后台必填 | 可注册为管理员的邮箱，逗号或空格分隔 |
-| `AI_API_BASE` | AI 代理必填 | 上游 LLM API 地址，如 `https://dashscope.aliyuncs.com/compatible-mode/v1` |
-| `AI_API_KEY` | AI 代理必填 | 上游 API Key |
 | `UPLOAD_DIR` | 否 | 上传目录，默认 `uploads` |
 | `MAX_UPLOAD_MB` | 否 | 单文件上传上限（MB），默认 10 |
+| `MODEL_API_BASE` | 否 | 简历解析大模型 API 地址，默认 `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| `MODEL_API_KEY` | 否 | 简历解析备用 API Key（用户无 License 时使用） |
+| `AI_API_BASE` | 否 | AI 代理上游地址，默认同上 |
+| `AI_ASR_API_BASE` | 否 | 语音转写上游地址，默认 `https://dashscope.aliyuncs.com/api/v1` |
+
+**说明**：AI 代理（chat/enrich/resume/jd/clean/asr）由客户端携带 `x-license-key`，服务端解密出上游 API Key，**无需配置 AI_API_KEY**。
 
 ## API 接口
 
@@ -90,8 +96,32 @@ npm run start
 |------|------|------|
 | POST | `/auth/admin-register` | 管理员注册（仅 `ADMIN_EMAILS` 内邮箱） |
 | POST | `/auth/admin-login` | 管理员登录 |
+| POST | `/auth/change-password` | 修改密码（需 Bearer Token） |
 
-### AI 代理（需 JWT 或 x-license-key）
+### 用户与业务
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/user/resume-context` | 获取最新简历上下文（兼容接口，可返回空） |
+| GET | `/api/profile` | 获取用户资料 |
+| PUT | `/api/profile` | 更新用户资料 |
+| POST | `/api/resume/upload` | 上传简历（PDF/DOCX） |
+| POST | `/api/resume/upload-meta` | 上报简历元信息（本地保存时） |
+| GET | `/api/resume/list` | 简历列表 |
+| GET | `/api/resume/item/:id` | 简历详情 |
+| PUT | `/api/resume/item/:id` | 更新简历内容 |
+| DELETE | `/api/resume/item/:id` | 删除简历 |
+| POST | `/api/voice/upload` | 上传录音（wav/mp3/webm/m4a） |
+| GET | `/api/voice/list` | 录音列表 |
+| GET | `/api/voice/:id/file` | 录音文件流 |
+| DELETE | `/api/voice/:id` | 删除录音 |
+| POST | `/api/sessions` | 创建面试会话 |
+| GET | `/api/sessions` | 会话列表 |
+| GET | `/api/sessions/:id` | 会话详情 |
+| PUT | `/api/sessions/:id` | 更新会话 |
+| POST | `/api/sessions/:id/responses` | 新增问答回合 |
+
+### AI 代理（需 JWT + x-license-key）
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -102,7 +132,7 @@ npm run start
 | POST | `/api/ai/clean` | 转写清洗 |
 | POST | `/api/ai/asr` | 语音转写 |
 
-需配置 `AI_API_BASE`、`AI_API_KEY`，否则返回 503。
+客户端需同时携带 `Authorization: Bearer <token>` 和 `x-license-key`。上游 API Key 由 License Key 解密得到，**无需在服务端配置 AI_API_KEY**。
 
 ### 管理接口（需管理员 Token）
 
@@ -148,8 +178,19 @@ node scripts/reset-password.js <邮箱> <新密码>
 │   ├── config.js         # 配置
 │   ├── routes/
 │   │   ├── auth.js       # 认证
+│   │   ├── user.js       # 用户兼容接口
+│   │   ├── profile.js    # 用户资料
+│   │   ├── resume.js     # 简历管理
+│   │   ├── voice.js      # 录音管理
+│   │   ├── sessions.js   # 面试会话
+│   │   ├── ai-proxy.js   # AI 代理（chat/enrich/resume/jd/clean/asr）
 │   │   ├── admin.js      # 管理接口
 │   │   └── usage.js      # 用量接口
+│   ├── services/
+│   │   ├── resumeService.js   # 简历创建/列表
+│   │   └── resumeAnalyzer.js  # 简历 AI 解析
+│   ├── utils/
+│   │   └── decryptLicense.js  # License Key 解密
 │   ├── middleware/
 │   │   ├── auth.js       # 鉴权
 │   │   └── admin.js      # 管理员权限
