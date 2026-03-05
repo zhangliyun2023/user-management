@@ -8,6 +8,12 @@ const pool = require('./db/pool');
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
 const usageRoutes = require('./routes/usage');
+const aiProxyRoutes = require('./routes/ai-proxy');
+const userRoutes = require('./routes/user');
+const profileRoutes = require('./routes/profile');
+const resumeRoutes = require('./routes/resume');
+const voiceRoutes = require('./routes/voice');
+const sessionRoutes = require('./routes/sessions');
 
 if (!config.jwtSecret) {
     throw new Error('JWT_SECRET is required');
@@ -36,9 +42,19 @@ app.get('/healthz', async (_req, res) => {
 });
 
 app.use('/auth', authRoutes);
+// Compatibility mounts for different client/reverse-proxy path conventions.
+app.use('/api/auth', authRoutes);
+app.use('/v1/auth', authRoutes);
+app.use('/', authRoutes);
 // usage 需在 admin 之前挂载，否则 /api/admin/usage/* 会被 admin 吞掉
 app.use('/api/admin/usage', usageRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/ai', aiProxyRoutes);
+app.use('/api/user', userRoutes);
+app.use('/api/profile', profileRoutes);
+app.use('/api/resume', resumeRoutes);
+app.use('/api/voice', voiceRoutes);
+app.use('/api/sessions', sessionRoutes);
 
 const webRoot = path.resolve(__dirname, '../web');
 if (fs.existsSync(webRoot)) {
@@ -47,5 +63,5 @@ if (fs.existsSync(webRoot)) {
 
 app.listen(config.port, () => {
     console.log(`user-management listening on :${config.port}`);
-    console.log('[auth] enabled endpoints: /auth/*');
+    console.log('[auth] enabled endpoints: /auth/*, /api/auth/*, /v1/auth/*, /* (compat)');
 });

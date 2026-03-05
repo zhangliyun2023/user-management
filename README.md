@@ -68,6 +68,8 @@ npm run start
 | `DATABASE_URL` | 是 | PostgreSQL 连接串 |
 | `JWT_SECRET` | 是 | JWT 签名密钥 |
 | `ADMIN_EMAILS` | 管理后台必填 | 可注册为管理员的邮箱，逗号或空格分隔 |
+| `AI_API_BASE` | AI 代理必填 | 上游 LLM API 地址，如 `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| `AI_API_KEY` | AI 代理必填 | 上游 API Key |
 | `UPLOAD_DIR` | 否 | 上传目录，默认 `uploads` |
 | `MAX_UPLOAD_MB` | 否 | 单文件上传上限（MB），默认 10 |
 
@@ -88,6 +90,19 @@ npm run start
 |------|------|------|
 | POST | `/auth/admin-register` | 管理员注册（仅 `ADMIN_EMAILS` 内邮箱） |
 | POST | `/auth/admin-login` | 管理员登录 |
+
+### AI 代理（需 JWT 或 x-license-key）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/ai/chat` | 流式对话 |
+| POST | `/api/ai/enrich` | 追问补充（流式） |
+| POST | `/api/ai/resume` | 简历分析 |
+| POST | `/api/ai/jd` | JD 解析 |
+| POST | `/api/ai/clean` | 转写清洗 |
+| POST | `/api/ai/asr` | 语音转写 |
+
+需配置 `AI_API_BASE`、`AI_API_KEY`，否则返回 503。
 
 ### 管理接口（需管理员 Token）
 

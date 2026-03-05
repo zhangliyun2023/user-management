@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const pool = require('../db/pool');
 const config = require('../config');
+const { authRequired } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -207,6 +208,40 @@ router.post('/admin-login', async (req, res) => {
         return res.json({ success: true, token, user: { id: user.id, email: user.email } });
     } catch (err) {
         return fail(res, 500, err.message, 'AUTH_ADMIN_LOGIN_FAILED');
+    }
+});
+
+/** 修改密码（需登录，仅邮箱账号可修改） */
+router.post('/change-password', authRequired, async (req, res) => {
+    try {
+        const currentPassword = String(req.body?.currentPassword || '');
+        const newPassword = String(req.body?.newPassword || '');
+        if (!currentPassword || !newPassword) {
+            return fail(res, 400, '当前密码和新密码必填', 'AUTH_MISSING_FIELDS');
+        }
+        if (newPassword.length < 8) {
+            return fail(res, 400, '新密码至少 8 位', 'AUTH_WEAK_PASSWORD');
+        }
+        const result = await pool.query(
+            `SELECT id, email, password_hash FROM users WHERE id = $1 LIMIT 1`,
+            [req.user.id]
+        );
+        const user = result.rows[0];
+        if (!user) {
+            return fail(res, 404, '用户不存在', 'AUTH_USER_NOT_FOUND');
+        }
+        if (!user.password_hash) {
+            return fail(res, 400, '该账号未设置密码，无法修改', 'AUTH_NO_PASSWORD');
+        }
+        const ok = await bcrypt.compare(currentPassword, user.password_hash);
+        if (!ok) {
+            return fail(res, 401, '当前密码错误', 'AUTH_INVALID_PASSWORD');
+        }
+        const hash = await bcrypt.hash(newPassword, 10);
+        await pool.query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [hash, req.user.id]);
+        return res.json({ success: true });
+    } catch (err) {
+        return fail(res, 500, err.message, 'AUTH_CHANGE_PASSWORD_FAILED');
     }
 });
 
