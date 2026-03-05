@@ -1,0 +1,791 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>管理员 - 用户统计</title>
+    <link rel="stylesheet" href="/css/style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .admin-actions {
+            display: inline-flex;
+            gap: 4px;
+            flex-wrap: nowrap;
+            align-items: center;
+        }
+        .admin-actions button {
+            padding: 5px 10px;
+            cursor: pointer;
+            border: 1px solid var(--border);
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            font-size: 12px;
+            color: var(--text-secondary);
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+        .admin-actions button:hover {
+            background: rgba(255,255,255,0.05);
+            border-color: var(--text-secondary);
+            color: var(--text-primary);
+        }
+        .admin-actions button:active {
+            transform: scale(0.98);
+        }
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+        .pill::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+        .pill.active {
+            color: #34d399;
+        }
+        .pill.frozen {
+            color: #f87171;
+        }
+        .user-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .user-table th,
+        .user-table td {
+            text-align: left;
+            padding: 8px;
+            border-bottom: 1px solid var(--border);
+            vertical-align: middle;
+        }
+        .user-table td.col-actions {
+            min-width: 140px;
+        }
+        .modal .chart-box {
+            min-height: 0;
+        }
+        .usage-quota-summary {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            margin-bottom: 12px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            gap: 16px;
+        }
+        .usage-quota-summary .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+        }
+        .usage-quota-summary .stat-label {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+        .usage-quota-summary .stat-value {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-primary);
+            font-variant-numeric: tabular-nums;
+        }
+        .usage-quota-summary .stat-value.accent {
+            color: #06b6d4;
+        }
+        .usage-charts-grid {
+            align-items: stretch;
+        }
+        .modal .chart-wrap {
+            position: relative;
+            min-height: 210px;
+            height: 210px;
+            width: 100%;
+        }
+        .modal .chart-pie-wrap {
+            min-height: 210px;
+            height: 210px;
+        }
+        .usage-detail-table {
+            margin-top: 12px;
+            font-size: 12px;
+            width: 100%;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+        }
+        .usage-detail-table th,
+        .usage-detail-table td {
+            padding: 8px 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        .usage-detail-table tr:last-child td {
+            border-bottom: none;
+        }
+        .usage-detail-table th {
+            color: var(--text-secondary);
+            font-weight: 500;
+            background: rgba(255,255,255,0.03);
+        }
+        .usage-detail-table th.num {
+            text-align: right;
+        }
+        .usage-detail-table td {
+            color: var(--text-primary);
+        }
+        .usage-detail-table td.num {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            font-weight: 600;
+        }
+        .chart-empty-state {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            font-size: 12px;
+            pointer-events: none;
+        }
+        .chart-center-label {
+            display: none;
+        }
+        .admin-form-row {
+            display: grid;
+            grid-template-columns: 1.2fr 1fr 160px 130px auto;
+            gap: 10px;
+            align-items: end;
+        }
+        .admin-form-row > div {
+            min-width: 0;
+        }
+        .admin-form-row input,
+        .admin-form-row select {
+            margin-bottom: 0;
+        }
+        .admin-log-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .admin-log-list {
+            max-height: 260px;
+            overflow: auto;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+        .admin-log-item {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+            color: var(--text-primary);
+        }
+        .admin-log-item:last-child {
+            border-bottom: none;
+        }
+        .admin-log-item .meta {
+            color: var(--text-secondary);
+            font-size: 12px;
+        }
+        .admin-actions .danger-action {
+            color: var(--danger);
+            border-color: rgba(239, 68, 68, 0.3);
+            background: rgba(239, 68, 68, 0.08);
+        }
+        .admin-actions .danger-action:hover {
+            background: rgba(239, 68, 68, 0.15);
+            border-color: var(--danger);
+        }
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 999;
+        }
+        .modal {
+            width: min(700px, 94vw);
+            max-height: 90vh;
+            overflow: auto;
+            background: #111;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        .modal-header h3 {
+            font-size: 14px;
+            font-weight: 600;
+            margin: 0;
+            color: var(--text-primary);
+        }
+        .modal-header button {
+            font-size: 12px;
+            padding: 4px 10px;
+        }
+        .modal .card {
+            padding: 14px;
+            background: #0a0a0a;
+        }
+        .modal .card h4 {
+            font-size: 12px;
+            font-weight: 500;
+            margin: 0 0 12px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .modal #usage-modal-status {
+            display: none;
+        }
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        @media (max-width: 900px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+            .admin-form-row {
+                grid-template-columns: 1fr;
+            }
+        }
+        @media (max-width: 500px) {
+            .modal {
+                width: 96vw;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div id="nav-container"></div>
+    <div class="card">
+        <h1>管理员 - 数据库统计</h1>
+        <div id="stats-line" class="muted"></div>
+    </div>
+    <div class="row">
+        <div class="card"><h2>用户总数</h2><div id="user-count">-</div></div>
+        <div class="card"><h2>总 Token 用量</h2><div id="token-count">-</div></div>
+    </div>
+    <div class="card">
+        <h2>新增用户</h2>
+        <div class="admin-form-row">
+            <div>
+                <label for="create-email">邮箱</label>
+                <input id="create-email" type="email" placeholder="user@example.com" />
+            </div>
+            <div>
+                <label for="create-password">密码（>=8 位）</label>
+                <input id="create-password" type="password" placeholder="请输入密码" />
+            </div>
+            <div>
+                <label for="create-role">角色</label>
+                <select id="create-role">
+                    <option value="user">普通用户</option>
+                    <option value="admin">管理员</option>
+                </select>
+            </div>
+            <div>
+                <label for="create-quota">配额</label>
+                <input id="create-quota" type="number" min="0" step="1" value="1000000" />
+            </div>
+            <div>
+                <button id="create-user-btn">添加用户</button>
+            </div>
+        </div>
+        <div id="create-user-status" class="small"></div>
+    </div>
+    <div class="card">
+        <h2>用户列表（配额与冻结）</h2>
+        <div id="user-list"></div>
+    </div>
+    <div class="card">
+        <h2>管理员操作日志</h2>
+        <div class="admin-log-toolbar">
+            <div class="small">所有修改记录自带时间戳，支持多管理员追踪</div>
+            <button id="refresh-logs-btn">刷新日志</button>
+        </div>
+        <div id="admin-log-list" class="admin-log-list"></div>
+    </div>
+</div>
+
+<div id="usage-modal-backdrop" class="modal-backdrop">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="usage-modal-title">用户用量明细</h3>
+            <button id="usage-modal-close">关闭</button>
+        </div>
+        <div id="usage-modal-status" class="muted"></div>
+        <div class="usage-quota-summary" id="usage-quota-summary"></div>
+        <div class="grid-2 usage-charts-grid">
+            <div class="card chart-box chart-quota">
+                <h4>总额度占比</h4>
+                <div class="chart-wrap chart-doughnut">
+                    <canvas id="usage-quota-canvas"></canvas>
+                    <div id="usage-quota-center" class="chart-center-label"></div>
+                </div>
+            </div>
+            <div class="card chart-box chart-usage">
+                <h4>已用额度 · 按场景与模型</h4>
+                <div class="chart-wrap chart-pie-wrap" id="usage-type-chart-wrap">
+                    <canvas id="usage-type-canvas"></canvas>
+                    <div id="usage-type-empty" class="chart-empty-state" style="display:none;">暂无用量数据</div>
+                </div>
+            </div>
+        </div>
+        <table id="usage-detail-table" class="usage-detail-table" style="display:none;">
+            <thead><tr><th>场景</th><th>模型</th><th class="num">用量</th><th class="num">占比</th></tr></thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script>
+    (async function () {
+        let quotaChart = null;
+        let typeChart = null;
+
+        function formatNumber(n) {
+            return Number(n || 0).toLocaleString('zh-CN');
+        }
+
+        function formatDateTime(ts) {
+            return ts ? new Date(ts).toLocaleString('zh-CN') : '-';
+        }
+
+        function actionLabel(action) {
+            const map = {
+                create_user: '新增用户',
+                delete_user: '删除用户',
+                set_quota: '修改配额',
+                set_frozen: '冻结/解冻',
+            };
+            return map[action] || action || '-';
+        }
+
+        function renderAuditLogs(logs) {
+            const box = document.getElementById('admin-log-list');
+            if (!Array.isArray(logs) || logs.length === 0) {
+                box.innerHTML = '<div class="admin-log-item">暂无日志</div>';
+                return;
+            }
+            box.innerHTML = logs.map((log) => {
+                const detail = log.detail && typeof log.detail === 'object' ? JSON.stringify(log.detail) : '';
+                return `<div class="admin-log-item">
+                    <div><strong>${actionLabel(log.action)}</strong> · 目标：${log.targetEmail || '-'}（ID: ${log.targetUserId || '-'}）</div>
+                    <div class="meta">管理员：${log.adminEmail || '-'} · 时间：${formatDateTime(log.createdAt)}</div>
+                    <div class="meta">${detail}</div>
+                </div>`;
+            }).join('');
+        }
+
+        async function createUser() {
+            const statusEl = document.getElementById('create-user-status');
+            const email = String(document.getElementById('create-email').value || '').trim();
+            const password = String(document.getElementById('create-password').value || '');
+            const role = String(document.getElementById('create-role').value || 'user');
+            const quotaTokens = Number(document.getElementById('create-quota').value);
+
+            if (!email || !password) {
+                statusEl.textContent = '邮箱和密码必填';
+                return;
+            }
+            if (!Number.isFinite(quotaTokens) || quotaTokens < 0) {
+                statusEl.textContent = '配额必须是 >= 0 的数字';
+                return;
+            }
+            statusEl.textContent = '创建中...';
+            try {
+                await WebApi.apiRequest('/api/admin/users', {
+                    method: 'POST',
+                    body: {
+                        email,
+                        password,
+                        role,
+                        quota_tokens: Math.floor(quotaTokens),
+                    },
+                });
+                document.getElementById('create-password').value = '';
+                statusEl.textContent = `创建成功：${email}`;
+                await loadAdmin();
+            } catch (err) {
+                statusEl.textContent = WebApi.mapErrorToUserMessage(err);
+            }
+        }
+
+        async function deleteUser(userId, email) {
+            const ok = confirm(`确认删除用户 ${email}（ID: ${userId}）？此操作不可恢复。`);
+            if (!ok) return;
+            const verifyInput = prompt(`二次确认：请输入用户邮箱 "${email}" 后才能删除`);
+            if (verifyInput === null) return;
+            const normalizedInput = String(verifyInput || '').trim().toLowerCase();
+            const normalizedEmail = String(email || '').trim().toLowerCase();
+            if (!normalizedInput || normalizedInput !== normalizedEmail) {
+                alert('邮箱不匹配，已取消删除');
+                return;
+            }
+            await WebApi.apiRequest(`/api/admin/users/${userId}`, {
+                method: 'DELETE',
+            });
+            await loadAdmin();
+        }
+
+        async function setQuota(userId, currentQuota) {
+            const input = prompt('请输入新配额（token 数）', String(currentQuota || 0));
+            if (input === null) return;
+            const nextQuota = Number(input);
+            if (!Number.isFinite(nextQuota) || nextQuota < 0) {
+                alert('配额必须是 >= 0 的数字');
+                return;
+            }
+            await WebApi.apiRequest(`/api/admin/usage/quota/${userId}`, {
+                method: 'PUT',
+                body: { quota_tokens: Math.floor(nextQuota) },
+            });
+            await loadAdmin();
+        }
+
+        async function setFrozen(userId, frozen) {
+            await WebApi.apiRequest(`/api/admin/usage/freeze/${userId}`, {
+                method: 'PUT',
+                body: {
+                    frozen: Boolean(frozen),
+                    freeze_reason: frozen ? 'manual_frozen_by_admin' : 'manual_unfrozen_by_admin',
+                },
+            });
+            await loadAdmin();
+        }
+
+        function destroyCharts() {
+            if (quotaChart) {
+                quotaChart.destroy();
+                quotaChart = null;
+            }
+            if (typeChart) {
+                typeChart.destroy();
+                typeChart = null;
+            }
+        }
+
+        async function showUsageDetail(user) {
+            const backdrop = document.getElementById('usage-modal-backdrop');
+            const title = document.getElementById('usage-modal-title');
+            const status = document.getElementById('usage-modal-status');
+            title.textContent = `用户用量明细 - ${user.email}`;
+            status.textContent = '加载中...';
+            backdrop.style.display = 'flex';
+            destroyCharts();
+
+            try {
+                const data = await WebApi.apiRequest(`/api/admin/usage/detail/${user.id}`);
+                let byTypeAndModel = Array.isArray(data.byTypeAndModel) ? data.byTypeAndModel : [];
+                if (byTypeAndModel.length === 0 && Array.isArray(data.byType)) {
+                    byTypeAndModel = data.byType.filter(x => (x.totalTokens || 0) > 0).map(x => ({
+                        callType: x.callType,
+                        model: '(按场景)',
+                        promptTokens: x.promptTokens || 0,
+                        completionTokens: x.completionTokens || 0,
+                        totalTokens: x.totalTokens || 0,
+                    }));
+                }
+                const usedTokens = Math.max(0, Number(user.usedTokens || 0));
+                const quotaTokens = Math.max(0, Number(user.quotaTokens || 0));
+                const remainingTokens = Math.max(quotaTokens - usedTokens, 0);
+                const usedRatio = quotaTokens > 0 ? (usedTokens / quotaTokens) * 100 : 0;
+                const summaryEl = document.getElementById('usage-quota-summary');
+                if (summaryEl) summaryEl.innerHTML = `
+                    <div class="stat-item"><span class="stat-label">已用 Token</span><span class="stat-value accent">${formatNumber(usedTokens)}</span></div>
+                    <div class="stat-item"><span class="stat-label">总配额</span><span class="stat-value">${formatNumber(quotaTokens)}</span></div>
+                    <div class="stat-item"><span class="stat-label">使用率</span><span class="stat-value">${usedRatio.toFixed(2)}%</span></div>
+                `;
+
+                const callTypeLabels = { chat: '对话', enrich: '丰富', resume: '简历解析', jd: 'JD解析', clean: '清洗', asr: '语音识别' };
+                const palette = ['#06b6d4', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#6366f1', '#22d3ee', '#f97316', '#a855f7', '#34d399'];
+
+                const quotaTotal = usedTokens + remainingTokens;
+                const sharedLegendLabels = {
+                    color: '#ededed',
+                    font: { size: 12 },
+                    padding: 10,
+                    usePointStyle: true,
+                    pointStyle: 'circle',
+                    boxWidth: 10,
+                };
+                const sharedTooltip = {
+                    backgroundColor: 'rgba(10,10,10,0.95)',
+                    titleColor: '#ededed',
+                    bodyColor: '#a1a1aa',
+                    padding: 10,
+                    borderColor: 'rgba(255,255,255,0.1)',
+                    borderWidth: 1,
+                };
+
+                quotaChart = new Chart(document.getElementById('usage-quota-canvas'), {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['已使用', '剩余额度'],
+                        datasets: [{
+                            data: [usedTokens, remainingTokens],
+                            backgroundColor: ['#06b6d4', '#1e293b'],
+                            borderColor: ['#0891b2', '#334155'],
+                            borderWidth: 1,
+                            hoverOffset: 6,
+                        }],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        cutout: '60%',
+                        layout: { padding: 8 },
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'bottom',
+                                labels: {
+                                    ...sharedLegendLabels,
+                                    generateLabels: (chart) => {
+                                        const ds = chart.data.datasets[0];
+                                        return (chart.data.labels || []).map((label, i) => ({
+                                            text: `${label}  ${formatNumber(ds.data[i])} (${quotaTotal > 0 ? ((ds.data[i] / quotaTotal) * 100).toFixed(1) : 0}%)`,
+                                            fillStyle: ds.backgroundColor[i],
+                                            strokeStyle: ds.backgroundColor[i],
+                                            fontColor: '#ededed',
+                                            lineWidth: 0,
+                                            hidden: false,
+                                            index: i,
+                                        }));
+                                    }
+                                }
+                            },
+                            tooltip: {
+                                ...sharedTooltip,
+                                callbacks: { label: (ctx) => `${ctx.label}: ${formatNumber(ctx.raw)}` }
+                            }
+                        }
+                    },
+                });
+
+                const usageItems = byTypeAndModel.filter(x => (x.totalTokens || 0) > 0);
+                const chartWrap = document.getElementById('usage-type-chart-wrap');
+                const emptyEl = document.getElementById('usage-type-empty');
+                const canvasEl = document.getElementById('usage-type-canvas');
+
+                const detailTable = document.getElementById('usage-detail-table');
+                const detailTbody = detailTable?.querySelector('tbody');
+
+                if (usageItems.length === 0) {
+                    canvasEl.style.display = 'none';
+                    emptyEl.style.display = 'flex';
+                    if (detailTable) detailTable.style.display = 'none';
+                    typeChart = null;
+                } else {
+                    emptyEl.style.display = 'none';
+                    canvasEl.style.display = 'block';
+                    const labels = usageItems.map(x => {
+                        const scene = callTypeLabels[x.callType] || x.callType;
+                        return `${scene} · ${x.model}`;
+                    });
+                    const values = usageItems.map(x => x.totalTokens || 0);
+                    const total = values.reduce((a, b) => a + b, 0);
+
+                    if (detailTable && detailTbody) {
+                        detailTable.style.display = 'table';
+                        detailTbody.innerHTML = usageItems.map((x, i) => {
+                            const scene = callTypeLabels[x.callType] || x.callType;
+                            const pct = total > 0 ? ((x.totalTokens / total) * 100).toFixed(1) : 0;
+                            return `<tr><td>${scene}</td><td>${x.model}</td><td class="num">${formatNumber(x.totalTokens)}</td><td class="num">${pct}%</td></tr>`;
+                        }).join('');
+                    }
+
+                    typeChart = new Chart(canvasEl, {
+                        type: 'doughnut',
+                        data: {
+                            labels,
+                            datasets: [{
+                                data: values,
+                                backgroundColor: labels.map((_, i) => palette[i % palette.length]),
+                                borderColor: '#111',
+                                borderWidth: 2,
+                                hoverOffset: 6,
+                            }],
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            cutout: '60%',
+                            layout: { padding: 8 },
+                            animation: { animateRotate: true, animateScale: true },
+                            plugins: {
+                                legend: {
+                                    position: 'bottom',
+                                    labels: {
+                                        ...sharedLegendLabels,
+                                        generateLabels: (chart) => {
+                                            const ds = chart.data.datasets[0];
+                                            return (chart.data.labels || []).map((label, i) => {
+                                                const pct = total > 0 ? ((ds.data[i] / total) * 100).toFixed(1) : 0;
+                                                const truncated = label.length > 20 ? label.slice(0, 20) + '…' : label;
+                                                return {
+                                                    text: `${truncated}  ${formatNumber(ds.data[i])} (${pct}%)`,
+                                                    fillStyle: ds.backgroundColor[i],
+                                                    strokeStyle: ds.backgroundColor[i],
+                                                    fontColor: '#ededed',
+                                                    lineWidth: 0,
+                                                    hidden: false,
+                                                    index: i,
+                                                };
+                                            });
+                                        }
+                                    }
+                                },
+                                tooltip: {
+                                    ...sharedTooltip,
+                                    callbacks: {
+                                        title: (items) => items[0]?.label || '',
+                                        label: (ctx) => {
+                                            const raw = ctx.raw || 0;
+                                            const pct = total > 0 ? ((raw / total) * 100).toFixed(1) : 0;
+                                            return `用量: ${formatNumber(raw)} (${pct}%)`;
+                                        },
+                                        afterLabel: (ctx) => {
+                                            const item = usageItems[ctx.dataIndex];
+                                            if (!item) return '';
+                                            return `输入: ${formatNumber(item.promptTokens)} · 输出: ${formatNumber(item.completionTokens)}`;
+                                        }
+                                    }
+                                },
+                            }
+                        },
+                    });
+                }
+            } catch (err) {
+                status.textContent = WebApi.mapErrorToUserMessage(err);
+            }
+        }
+
+        const user = await WebApi.ensureLoggedIn();
+        if (!user) return;
+        WebApi.renderNav(user);
+        if (user.role !== 'admin') {
+            document.body.innerHTML = '<div class="container"><div class="card"><h1>无权限</h1><p>仅管理员可访问此页面。</p><a href="/index.html">返回登录</a></div></div>';
+            return;
+        }
+
+        document.getElementById('stats-line').textContent = '实时数据，刷新页面更新';
+        document.getElementById('create-user-btn').addEventListener('click', createUser);
+        document.getElementById('refresh-logs-btn').addEventListener('click', loadAdmin);
+        document.getElementById('usage-modal-close').addEventListener('click', () => {
+            document.getElementById('usage-modal-backdrop').style.display = 'none';
+            destroyCharts();
+        });
+        document.getElementById('usage-modal-backdrop').addEventListener('click', (e) => {
+            if (e.target.id === 'usage-modal-backdrop') {
+                document.getElementById('usage-modal-backdrop').style.display = 'none';
+                destroyCharts();
+            }
+        });
+
+        async function loadAdmin() {
+            try {
+                const [stats, users, usage, logsData] = await Promise.all([
+                    WebApi.apiRequest('/api/admin/stats'),
+                    WebApi.apiRequest('/api/admin/users'),
+                    WebApi.apiRequest('/api/admin/usage/summary'),
+                    WebApi.apiRequest('/api/admin/audit-logs?limit=100'),
+                ]);
+
+                const s = stats.stats || {};
+                document.getElementById('user-count').textContent = s.users ?? '-';
+                document.getElementById('token-count').textContent = formatNumber(usage?.totals?.totalTokens || s.totalTokens || 0);
+
+                const list = users.users || [];
+                const listById = new Map(list.map(x => [String(x.id), x]));
+                document.getElementById('user-list').innerHTML = list.length
+                    ? '<table class="user-table"><thead><tr><th>ID</th><th>邮箱</th><th>角色</th><th>Token 使用 / 配额</th><th>状态</th><th>操作</th><th>注册时间</th></tr></thead><tbody>' +
+                    list.map(u => `<tr>
+                        <td>${u.id}</td>
+                        <td>${u.email}</td>
+                        <td>${u.role}</td>
+                        <td>${formatNumber(u.usedTokens)} / ${formatNumber(u.quotaTokens)}</td>
+                        <td><span class="pill ${u.frozen ? 'frozen' : 'active'}">${u.frozen ? '已冻结' : '正常'}</span></td>
+                        <td class="col-actions">
+                            <div class="admin-actions">
+                                <button data-action="detail" data-id="${u.id}">明细</button>
+                                <button data-action="quota" data-id="${u.id}" data-quota="${u.quotaTokens}">配额</button>
+                                <button data-action="freeze" data-id="${u.id}" data-frozen="${u.frozen}">${u.frozen ? '解冻' : '冻结'}</button>
+                                <button class="danger-action" data-action="delete" data-id="${u.id}" data-email="${u.email}">删除</button>
+                            </div>
+                        </td>
+                        <td>${new Date(u.createdAt).toLocaleString()}</td>
+                    </tr>`).join('') +
+                    '</tbody></table>'
+                    : '<div class="small">暂无用户</div>';
+
+                document.querySelectorAll('#user-list button[data-action="detail"]').forEach(el => {
+                    el.addEventListener('click', () => {
+                        const id = String(el.getAttribute('data-id') || '');
+                        const u = listById.get(id);
+                        if (!u) return;
+                        showUsageDetail(u);
+                    });
+                });
+                document.querySelectorAll('#user-list button[data-action="quota"]').forEach(el => {
+                    el.addEventListener('click', () => setQuota(el.getAttribute('data-id'), el.getAttribute('data-quota')));
+                });
+                document.querySelectorAll('#user-list button[data-action="freeze"]').forEach(el => {
+                    el.addEventListener('click', () => {
+                        const id = el.getAttribute('data-id');
+                        const frozen = String(el.getAttribute('data-frozen')) === 'true';
+                        setFrozen(id, !frozen);
+                    });
+                });
+                document.querySelectorAll('#user-list button[data-action="delete"]').forEach(el => {
+                    el.addEventListener('click', async () => {
+                        try {
+                            const id = el.getAttribute('data-id');
+                            const email = el.getAttribute('data-email');
+                            await deleteUser(id, email);
+                        } catch (err) {
+                            alert(WebApi.mapErrorToUserMessage(err));
+                        }
+                    });
+                });
+                renderAuditLogs(logsData?.logs || []);
+            } catch (err) {
+                document.getElementById('user-list').innerHTML = '<div class="status error">' + WebApi.mapErrorToUserMessage(err) + '</div>';
+                document.getElementById('admin-log-list').innerHTML = '<div class="admin-log-item">日志加载失败</div>';
+            }
+        }
+
+        await loadAdmin();
+        setInterval(loadAdmin, 10000);
+    })();
+</script>
+</body>
+</html>
