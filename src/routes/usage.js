@@ -9,6 +9,10 @@ function fail(res, status, error, code) {
     return res.status(status).json({ success: false, error, code });
 }
 
+function validateEmail(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 async function writeAdminAuditLog(client, payload) {
     await client.query(
         `
@@ -26,6 +30,52 @@ async function writeAdminAuditLog(client, payload) {
         ]
     );
 }
+
+/** 管理员按邮箱查询用户余额/用量 */
+router.get('/balance', authRequired, adminRequired, async (req, res) => {
+    try {
+        const email = String(req.query?.email || '').trim().toLowerCase();
+        if (!email) {
+            return fail(res, 400, '请提供 email 查询参数', 'MISSING_EMAIL');
+        }
+        if (!validateEmail(email)) {
+            return fail(res, 400, '邮箱格式无效', 'INVALID_EMAIL');
+        }
+
+        const result = await pool.query(
+            `
+            SELECT
+                u.id,
+                u.email,
+                COALESCE(u.quota_tokens, 1000000)::bigint AS quota_tokens,
+                COALESCE(u.frozen, FALSE) AS frozen,
+                COALESCE(SUM(tu.total_tokens), 0)::bigint AS used_tokens
+            FROM users u
+            LEFT JOIN token_usage tu ON tu.user_id = u.id
+            WHERE LOWER(TRIM(u.email)) = $1
+            GROUP BY u.id, u.email, u.quota_tokens, u.frozen
+            LIMIT 1
+            `,
+            [email]
+        );
+        const row = result.rows[0];
+        if (!row) {
+            return fail(res, 404, '用户不存在', 'USER_NOT_FOUND');
+        }
+        return res.json({
+            success: true,
+            user: {
+                id: row.id,
+                email: row.email || '',
+                usedTokens: Number(row.used_tokens || 0),
+                quotaTokens: Number(row.quota_tokens || 0),
+                frozen: Boolean(row.frozen),
+            },
+        });
+    } catch (error) {
+        return fail(res, 500, error.message, 'BALANCE_QUERY_FAILED');
+    }
+});
 
 router.get('/summary', authRequired, adminRequired, async (_req, res) => {
     try {

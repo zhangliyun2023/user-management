@@ -81,6 +81,8 @@ npm run start
 
 ## API 接口
 
+> **前端开发**：完整接口文档见 [docs/API接口文档.md](docs/API接口文档.md)，含请求/响应示例、错误码及余额相关接口说明。
+
 ### 认证（软件端）
 
 | 方法 | 路径 | 说明 |
@@ -89,6 +91,8 @@ npm run start
 | POST | `/auth/login` | 邮箱登录（普通用户） |
 | POST | `/auth/license` | License Key 登录/注册 |
 | GET | `/auth/me` | 获取当前用户（需 Bearer Token） |
+
+登录与 `/auth/me` 返回的 `user` 对象包含 `frozen`、`quotaTokens`、`usedTokens`，便于客户端在发问前检查冻结与余额状态。
 
 ### 认证（管理后台）
 
@@ -103,6 +107,7 @@ npm run start
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/user/resume-context` | 获取最新简历上下文（兼容接口，可返回空） |
+| GET | `/api/user/balance` | 查询当前用户余额/状态（需 Bearer Token，返回 usedTokens、quotaTokens、frozen） |
 | GET | `/api/profile` | 获取用户资料 |
 | PUT | `/api/profile` | 更新用户资料 |
 | POST | `/api/resume/upload` | 上传简历（PDF/DOCX） |
@@ -143,6 +148,7 @@ npm run start
 | POST | `/api/admin/users` | 新增用户 |
 | DELETE | `/api/admin/users/:userId` | 删除用户 |
 | GET | `/api/admin/usage/summary` | 用量汇总 |
+| GET | `/api/admin/usage/balance?email=xxx` | 按邮箱查询用户余额（返回 usedTokens、quotaTokens、frozen） |
 | GET | `/api/admin/usage/detail/:userId` | 用户用量明细 |
 | PUT | `/api/admin/usage/quota/:userId` | 设置用户配额 |
 | PUT | `/api/admin/usage/freeze/:userId` | 冻结/解冻用户 |
@@ -168,6 +174,16 @@ node scripts/reset-password.js <邮箱> <新密码>
 ```
 
 若该邮箱不存在，会自动创建为管理员账号。
+
+### 余额接口测试
+
+测试余额查询、登录扩展等接口：
+
+```bash
+node scripts/test-balance-api.js [BASE_URL]
+```
+
+环境变量：`ADMIN_EMAIL`、`ADMIN_PASSWORD`、`TEST_USER_EMAIL`、`TEST_USER_PASSWORD`。默认 `BASE_URL` 为 `http://localhost:8787`。
 
 ## 项目结构
 

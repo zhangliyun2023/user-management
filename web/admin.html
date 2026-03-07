@@ -279,6 +279,30 @@
                 width: 96vw;
             }
         }
+        .balance-query-row {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+            margin-bottom: 12px;
+        }
+        .balance-query-row input {
+            flex: 1;
+            min-width: 0;
+            margin-bottom: 0;
+        }
+        .balance-query-result {
+            margin-top: 12px;
+            padding: 14px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+        }
+        .balance-query-result .stat-row {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
     </style>
 </head>
 <body>
@@ -319,6 +343,21 @@
             </div>
         </div>
         <div id="create-user-status" class="small"></div>
+    </div>
+    <div class="card">
+        <h2>按邮箱查询余额</h2>
+        <div class="balance-query-row">
+            <div style="flex:1;min-width:0;position:relative;">
+                <label for="balance-query-email">邮箱</label>
+                <input id="balance-query-email" type="text" autocomplete="off" placeholder="输入邮箱查询用户用量（支持自动补全）" list="balance-email-datalist" />
+                <datalist id="balance-email-datalist"></datalist>
+            </div>
+            <div>
+                <button id="balance-query-btn">查询</button>
+            </div>
+        </div>
+        <div id="balance-query-status" class="small"></div>
+        <div id="balance-query-result" class="balance-query-result" style="display:none;"></div>
     </div>
     <div class="card">
         <h2>用户列表（配额与冻结）</h2>
@@ -439,6 +478,52 @@
             }
         }
 
+        async function balanceQuery() {
+            const statusEl = document.getElementById('balance-query-status');
+            const resultEl = document.getElementById('balance-query-result');
+            const btnEl = document.getElementById('balance-query-btn');
+            const email = String(document.getElementById('balance-query-email').value || '').trim();
+            if (!email) {
+                statusEl.textContent = '请输入邮箱';
+                resultEl.style.display = 'none';
+                return;
+            }
+            btnEl.disabled = true;
+            btnEl.textContent = '查询中...';
+            statusEl.textContent = '';
+            resultEl.style.display = 'none';
+            try {
+                const data = await WebApi.apiRequest(`/api/admin/usage/balance?email=${encodeURIComponent(email)}`);
+                const u = data.user || {};
+                const usedTokens = Number(u.usedTokens || 0);
+                const quotaTokens = Number(u.quotaTokens || 0);
+                const usedRatio = quotaTokens > 0 ? (usedTokens / quotaTokens * 100).toFixed(2) : '0';
+                resultEl.innerHTML = `
+                    <div class="stat-row usage-quota-summary" style="margin-bottom:0;">
+                        <div class="stat-item"><span class="stat-label">邮箱</span><span class="stat-value">${u.email || '-'}</span></div>
+                        <div class="stat-item"><span class="stat-label">已用 Token</span><span class="stat-value accent">${formatNumber(usedTokens)}</span></div>
+                        <div class="stat-item"><span class="stat-label">总配额</span><span class="stat-value">${formatNumber(quotaTokens)}</span></div>
+                        <div class="stat-item"><span class="stat-label">使用率</span><span class="stat-value">${usedRatio}%</span></div>
+                        <div class="stat-item"><span class="stat-label">状态</span><span class="pill ${u.frozen ? 'frozen' : 'active'}">${u.frozen ? '已冻结' : '正常'}</span></div>
+                    </div>
+                    <div class="admin-actions" style="margin-top:12px;">
+                        <button data-action="detail" data-id="${u.id}">查看明细</button>
+                    </div>
+                `;
+                resultEl.style.display = 'block';
+                const detailBtn = resultEl.querySelector('[data-action="detail"]');
+                if (detailBtn) {
+                    detailBtn.addEventListener('click', () => showUsageDetail(u));
+                }
+            } catch (err) {
+                statusEl.textContent = WebApi.mapErrorToUserMessage(err);
+                resultEl.style.display = 'none';
+            } finally {
+                btnEl.disabled = false;
+                btnEl.textContent = '查询';
+            }
+        }
+
         async function deleteUser(userId, email) {
             const ok = confirm(`确认删除用户 ${email}（ID: ${userId}）？此操作不可恢复。`);
             if (!ok) return;
@@ -546,6 +631,7 @@
                     borderWidth: 1,
                 };
 
+                const createCharts = () => {
                 quotaChart = new Chart(document.getElementById('usage-quota-canvas'), {
                     type: 'doughnut',
                     data: {
@@ -684,6 +770,8 @@
                         },
                     });
                 }
+                };
+                setTimeout(createCharts, 80);
             } catch (err) {
                 status.textContent = WebApi.mapErrorToUserMessage(err);
             }
@@ -699,6 +787,10 @@
 
         document.getElementById('stats-line').textContent = '实时数据，刷新页面更新';
         document.getElementById('create-user-btn').addEventListener('click', createUser);
+        document.getElementById('balance-query-btn').addEventListener('click', balanceQuery);
+        document.getElementById('balance-query-email').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') balanceQuery();
+        });
         document.getElementById('refresh-logs-btn').addEventListener('click', loadAdmin);
         document.getElementById('usage-modal-close').addEventListener('click', () => {
             document.getElementById('usage-modal-backdrop').style.display = 'none';
@@ -726,6 +818,16 @@
 
                 const list = users.users || [];
                 const listById = new Map(list.map(x => [String(x.id), x]));
+                const datalist = document.getElementById('balance-email-datalist');
+                if (datalist) {
+                    datalist.innerHTML = list
+                        .filter(u => u.email && String(u.email).trim() && u.email !== '-')
+                        .map(u => {
+                            const e = String(u.email || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                            return `<option value="${e}">`;
+                        })
+                        .join('');
+                }
                 document.getElementById('user-list').innerHTML = list.length
                     ? '<table class="user-table"><thead><tr><th>ID</th><th>邮箱</th><th>角色</th><th>Token 使用 / 配额</th><th>状态</th><th>操作</th><th>注册时间</th></tr></thead><tbody>' +
                     list.map(u => `<tr>

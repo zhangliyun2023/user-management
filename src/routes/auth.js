@@ -19,6 +19,31 @@ function validateEmail(email) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+async function getQuotaForUser(userId) {
+    const result = await pool.query(
+        `
+        SELECT
+            COALESCE(u.quota_tokens, 1000000)::bigint AS quota_tokens,
+            COALESCE(u.frozen, FALSE) AS frozen,
+            COALESCE(SUM(tu.total_tokens), 0)::bigint AS used_tokens
+        FROM users u
+        LEFT JOIN token_usage tu ON tu.user_id = u.id
+        WHERE u.id = $1
+        GROUP BY u.id, u.quota_tokens, u.frozen
+        LIMIT 1
+        `,
+        [userId]
+    );
+    const row = result.rows[0];
+    return row
+        ? {
+              quotaTokens: Number(row.quota_tokens || 0),
+              usedTokens: Number(row.used_tokens || 0),
+              frozen: Boolean(row.frozen),
+          }
+        : { quotaTokens: 1000000, usedTokens: 0, frozen: false };
+}
+
 /** 软件端：普通用户邮箱注册 */
 router.post('/register', async (req, res) => {
     try {
@@ -83,6 +108,7 @@ router.post('/login', async (req, res) => {
             return fail(res, 401, '邮箱或密码错误', 'AUTH_INVALID_CREDENTIALS');
         }
 
+        const quota = await getQuotaForUser(user.id);
         const token = issueToken(user.id);
         return res.json({
             success: true,
@@ -93,6 +119,9 @@ router.post('/login', async (req, res) => {
                 license_key: user.license_key || '',
                 created_at: user.created_at,
                 role: user.role || 'user',
+                frozen: quota.frozen,
+                quotaTokens: quota.quotaTokens,
+                usedTokens: quota.usedTokens,
             },
         });
     } catch (err) {
@@ -128,8 +157,21 @@ router.post('/license', async (req, res) => {
             ).rows[0];
         }
 
+        const quota = await getQuotaForUser(user.id);
         const token = issueToken(user.id);
-        return res.json({ success: true, token, user });
+        return res.json({
+            success: true,
+            token,
+            user: {
+                id: user.id,
+                email: user.email || '',
+                license_key: user.license_key || '',
+                created_at: user.created_at,
+                frozen: quota.frozen,
+                quotaTokens: quota.quotaTokens,
+                usedTokens: quota.usedTokens,
+            },
+        });
     } catch (err) {
         return fail(res, 500, err.message, 'AUTH_LICENSE_FAILED');
     }
@@ -261,6 +303,7 @@ router.get('/me', async (req, res) => {
         if (!user) {
             return fail(res, 404, 'user not found', 'AUTH_USER_NOT_FOUND');
         }
+        const quota = await getQuotaForUser(user.id);
         return res.json({
             success: true,
             user: {
@@ -269,6 +312,9 @@ router.get('/me', async (req, res) => {
                 licenseKey: user.license_key || '',
                 createdAt: user.created_at,
                 role: user.role || 'user',
+                frozen: quota.frozen,
+                quotaTokens: quota.quotaTokens,
+                usedTokens: quota.usedTokens,
             },
         });
     } catch (_err) {
